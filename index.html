@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>振り子シミュレーション</title>
+    <!-- RobotoフォントをGoogle Fontsからインポート -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSSカスタムプロパティを定義し、デバイスのテーマに基づいて変更 */
+        :root {
+            --background-color: #f0f0f0; /* ライトテーマの背景色 */
+            --text-color: #333; /* ライトテーマのテキスト色 */
+            --pendulum-color: #007bff; /* ライトテーマの振り子の色 */
+            --rod-color: #666; /* ライトテーマの棒の色 */
+            --button-bg-color: #007bff;
+            --button-text-color: #ffffff;
+            --button-hover-bg-color: #0056b3;
+            --border-color: #ccc;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background-color: #282c34; /* ダークテーマの背景色 */
+                --text-color: #f0f0f0; /* ダークテーマのテキスト色 */
+                --pendulum-color: #4CAF50; /* ダークテーマの振り子の色 */
+                --rod-color: #aaa; /* ダークテーマの棒の色 */
+                --button-bg-color: #4CAF50;
+                --button-text-color: #282c34;
+                --button-hover-bg-color: #367c39;
+                --border-color: #555;
+            }
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            overflow: hidden; /* スクロールバーを非表示にする */
+        }
+
+        h1 {
+            color: var(--text-color);
+            margin-bottom: 20px;
+            font-size: clamp(1.5rem, 5vw, 2.5rem); /* レスポンシブなフォントサイズ */
+        }
+
+        .container {
+            background-color: var(--background-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 90%; /* コンテナの幅をレスポンシブに */
+            max-width: 800px; /* 最大幅を設定 */
+            box-sizing: border-box; /* パディングを幅に含める */
+        }
+
+        canvas {
+            display: block;
+            background-color: var(--background-color); /* キャンバスの背景もテーマに合わせる */
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            width: 100%; /* 親要素の幅に合わせてキャンバスの幅を調整 */
+            height: clamp(300px, 60vh, 500px); /* レスポンシブな高さ */
+            box-sizing: border-box;
+            transition: border-color 0.3s ease;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        button {
+            padding: 12px 25px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: var(--button-text-color);
+            background-color: var(--button-bg-color);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        button:hover {
+            background-color: var(--button-hover-bg-color);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>振り子シミュレーション</h1>
+    <div class="container">
+        <canvas id="pendulumCanvas"></canvas>
+        <div class="controls">
+            <button id="resetButton">リセット</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pendulumCanvas');
+        const ctx = canvas.getContext('2d');
+        const resetButton = document.getElementById('resetButton');
+
+        // 振り子の初期状態
+        let pendulum = {
+            length: 150, // 振り子の棒の長さ (px)
+            angle: Math.PI / 4, // 初期角度 (ラジアン)
+            angularVelocity: 0, // 角速度
+            angularAcceleration: 0, // 角加速度
+            gravity: 0.5, // 重力加速度
+            damping: 0.998, // 減衰係数
+            bobRadius: 20 // 振り子の玉の半径 (px)
+        };
+
+        // キャンバスのサイズを設定し、ウィンドウのリサイズに対応
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth; // CSSで設定された幅を使用
+            canvas.height = canvas.offsetHeight; // CSSで設定された高さを使用
+
+            // 振り子の支点の位置 (キャンバスの上部中央)
+            pendulum.pivotX = canvas.width / 2;
+            pendulum.pivotY = 50; // 上端から少し下に配置
+        }
+
+        // 振り子をリセットする関数
+        function resetPendulum() {
+            pendulum.angle = Math.PI / 4; // 初期角度にリセット
+            pendulum.angularVelocity = 0; // 角速度をリセット
+            pendulum.angularAcceleration = 0; // 角加速度をリセット
+        }
+
+        // 振り子を描画する関数
+        function drawPendulum() {
+            // 現在のテーマから色を取得
+            const pendulumColor = getComputedStyle(document.documentElement).getPropertyValue('--pendulum-color').trim();
+            const rodColor = getComputedStyle(document.documentElement).getPropertyValue('--rod-color').trim();
+            const backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--background-color').trim();
+
+            // キャンバスをクリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // ctx.fillStyle = backgroundColor; // キャンバスの背景色を設定 (CSSで設定されるため不要)
+            // ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 振り子の玉の位置を計算
+            const bobX = pendulum.pivotX + pendulum.length * Math.sin(pendulum.angle);
+            const bobY = pendulum.pivotY + pendulum.length * Math.cos(pendulum.angle);
+
+            // 棒を描画
+            ctx.beginPath();
+            ctx.moveTo(pendulum.pivotX, pendulum.pivotY);
+            ctx.lineTo(bobX, bobY);
+            ctx.strokeStyle = rodColor;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 振り子の玉を描画
+            ctx.beginPath();
+            ctx.arc(bobX, bobY, pendulum.bobRadius, 0, Math.PI * 2);
+            ctx.fillStyle = pendulumColor;
+            ctx.fill();
+            ctx.strokeStyle = pendulumColor;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 支点を描画
+            ctx.beginPath();
+            ctx.arc(pendulum.pivotX, pendulum.pivotY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = rodColor;
+            ctx.fill();
+        }
+
+        // 振り子の状態を更新する関数
+        function updatePendulum() {
+            // 角加速度の計算 (シンプルな振り子の運動方程式)
+            pendulum.angularAcceleration = (-pendulum.gravity / pendulum.length) * Math.sin(pendulum.angle);
+
+            // 角速度の更新
+            pendulum.angularVelocity += pendulum.angularAcceleration;
+
+            // 減衰を適用
+            pendulum.angularVelocity *= pendulum.damping;
+
+            // 角度の更新
+            pendulum.angle += pendulum.angularVelocity;
+        }
+
+        // アニメーションループ
+        function animate() {
+            updatePendulum();
+            drawPendulum();
+            requestAnimationFrame(animate); // 次のフレームを要求
+        }
+
+        // イベントリスナー
+        window.addEventListener('load', () => {
+            resizeCanvas(); // ページ読み込み時にキャンバスのサイズを設定
+            animate(); // アニメーションを開始
+        });
+
+        window.addEventListener('resize', resizeCanvas); // ウィンドウのリサイズ時にキャンバスのサイズを再設定
+
+        resetButton.addEventListener('click', resetPendulum); // リセットボタンのクリックイベント
+
+        // デバイスのテーマ変更を監視し、必要に応じて再描画
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            // テーマが変更された場合、即座に再描画して色を更新
+            drawPendulum();
+        });
+
+    </script>
+</body>
+</html>
