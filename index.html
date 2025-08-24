@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>振り子シミュレーション</title>
+    <title>振り子シミュレーション (高画質版)</title>
     <!-- RobotoフォントをGoogle Fontsからインポート -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <!-- p5.jsライブラリをインポート -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.1/p5.min.js"></script>
     <style>
         /* CSSカスタムプロパティを定義し、デバイスのテーマに基づいて変更 */
         :root {
@@ -69,15 +71,21 @@
             box-sizing: border-box; /* パディングを幅に含める */
         }
 
-        canvas {
-            display: block;
-            background-color: var(--background-color); /* キャンバスの背景もテーマに合わせる */
+        /* p5.jsが生成するcanvasを配置するコンテナ */
+        #canvasContainer {
+            width: 100%;
+            height: clamp(300px, 60vh, 500px); /* レスポンシブな高さ */
             border: 2px solid var(--border-color);
             border-radius: 8px;
-            width: 100%; /* 親要素の幅に合わせてキャンバスの幅を調整 */
-            height: clamp(300px, 60vh, 500px); /* レスポンシブな高さ */
             box-sizing: border-box;
             transition: border-color 0.3s ease;
+            /* canvas自体へのスタイルはp5.jsが適用するため、コンテナに枠線などを設定 */
+        }
+        
+        /* p5.jsによって生成されるcanvas要素自体へのスタイル */
+        #canvasContainer canvas {
+            display: block;
+            border-radius: 6px; /* コンテナの角丸より少し小さく */
         }
 
         .controls {
@@ -111,38 +119,62 @@
     </style>
 </head>
 <body>
-    <h1>振り子シミュレーション</h1>
+    <h1>振り子シミュレーション (高画質版)</h1>
     <div class="container">
-        <canvas id="pendulumCanvas"></canvas>
+        <!-- p5.jsがこのdivの中にcanvasを生成します -->
+        <div id="canvasContainer"></div>
         <div class="controls">
             <button id="resetButton">リセット</button>
         </div>
     </div>
 
     <script>
-        const canvas = document.getElementById('pendulumCanvas');
-        const ctx = canvas.getContext('2d');
-        const resetButton = document.getElementById('resetButton');
-
-        // 振り子の初期状態
-        let pendulum = {
+        // 振り子の状態を管理するオブジェクト
+        const pendulum = {
             length: 150, // 振り子の棒の長さ (px)
             angle: Math.PI / 4, // 初期角度 (ラジアン)
             angularVelocity: 0, // 角速度
             angularAcceleration: 0, // 角加速度
             gravity: 0.5, // 重力加速度
             damping: 0.998, // 減衰係数
-            bobRadius: 20 // 振り子の玉の半径 (px)
+            bobRadius: 20, // 振り子の玉の半径 (px)
+            pivotX: 0, // 支点のX座標 (setupで初期化)
+            pivotY: 50 // 支点のY座標 (固定)
         };
 
-        // キャンバスのサイズを設定し、ウィンドウのリサイズに対応
-        function resizeCanvas() {
-            canvas.width = canvas.offsetWidth; // CSSで設定された幅を使用
-            canvas.height = canvas.offsetHeight; // CSSで設定された高さを使用
+        // DOM要素の参照
+        const resetButton = document.getElementById('resetButton');
+        const canvasContainer = document.getElementById('canvasContainer');
 
-            // 振り子の支点の位置 (キャンバスの上部中央)
-            pendulum.pivotX = canvas.width / 2;
-            pendulum.pivotY = 50; // 上端から少し下に配置
+        // p5.jsの初期化関数 (最初に一度だけ実行される)
+        function setup() {
+            // コンテナのサイズに合わせてキャンバスを作成
+            const canvas = createCanvas(canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+            // 作成したキャンバスをHTMLのコンテナdivの子要素にする
+            canvas.parent('canvasContainer');
+
+            // 振り子の支点のX座標をキャンバスの中央に設定
+            pendulum.pivotX = width / 2;
+
+            // リセットボタンのクリックイベントを設定
+            resetButton.addEventListener('click', resetPendulum);
+            
+            // p5.jsのdrawループは自動で実行されるため、テーマ変更時に
+            // 明示的に再描画を呼び出す必要はありません。
+        }
+
+        // p5.jsのアニメーションループ関数 (フレームごとに繰り返し実行される)
+        function draw() {
+            updatePendulum();
+            drawPendulum();
+        }
+        
+        // ウィンドウサイズが変更されたときに実行される関数
+        function windowResized() {
+            // コンテナの新しいサイズに合わせてキャンバスをリサイズ
+            resizeCanvas(canvasContainer.offsetWidth, canvasContainer.offsetHeight);
+            // 支点のX座標を再計算
+            pendulum.pivotX = width / 2;
         }
 
         // 振り子をリセットする関数
@@ -152,84 +184,49 @@
             pendulum.angularAcceleration = 0; // 角加速度をリセット
         }
 
+        // 振り子の状態を更新する関数 (物理演算)
+        function updatePendulum() {
+            // 角加速度の計算 (シンプルな振り子の運動方程式)
+            pendulum.angularAcceleration = (-pendulum.gravity / pendulum.length) * Math.sin(pendulum.angle);
+            // 角速度の更新
+            pendulum.angularVelocity += pendulum.angularAcceleration;
+            // 減衰を適用
+            pendulum.angularVelocity *= pendulum.damping;
+            // 角度の更新
+            pendulum.angle += pendulum.angularVelocity;
+        }
+
         // 振り子を描画する関数
         function drawPendulum() {
-            // 現在のテーマから色を取得
-            const pendulumColor = getComputedStyle(document.documentElement).getPropertyValue('--pendulum-color').trim();
-            const rodColor = getComputedStyle(document.documentElement).getPropertyValue('--rod-color').trim();
-            const backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--background-color').trim();
+            // CSSカスタムプロパティから現在のテーマの色を取得
+            const style = getComputedStyle(document.documentElement);
+            const pendulumColor = style.getPropertyValue('--pendulum-color').trim();
+            const rodColor = style.getPropertyValue('--rod-color').trim();
+            const backgroundColor = style.getPropertyValue('--background-color').trim();
 
-            // キャンバスをクリア
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            // ctx.fillStyle = backgroundColor; // キャンバスの背景色を設定 (CSSで設定されるため不要)
-            // ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // キャンバスの背景を塗りつぶし
+            background(backgroundColor);
 
             // 振り子の玉の位置を計算
             const bobX = pendulum.pivotX + pendulum.length * Math.sin(pendulum.angle);
             const bobY = pendulum.pivotY + pendulum.length * Math.cos(pendulum.angle);
 
             // 棒を描画
-            ctx.beginPath();
-            ctx.moveTo(pendulum.pivotX, pendulum.pivotY);
-            ctx.lineTo(bobX, bobY);
-            ctx.strokeStyle = rodColor;
-            ctx.lineWidth = 2;
-            ctx.stroke();
+            stroke(rodColor);      // 線の色
+            strokeWeight(3);     // 線の太さ
+            line(pendulum.pivotX, pendulum.pivotY, bobX, bobY); // 線を引く
 
             // 振り子の玉を描画
-            ctx.beginPath();
-            ctx.arc(bobX, bobY, pendulum.bobRadius, 0, Math.PI * 2);
-            ctx.fillStyle = pendulumColor;
-            ctx.fill();
-            ctx.strokeStyle = pendulumColor;
-            ctx.lineWidth = 2;
-            ctx.stroke();
+            noStroke(); // 枠線なし
+            fill(pendulumColor); // 塗りの色
+            // p5.jsのcircleは直径を指定するため、半径の2倍を渡す
+            circle(bobX, bobY, pendulum.bobRadius * 2);
 
             // 支点を描画
-            ctx.beginPath();
-            ctx.arc(pendulum.pivotX, pendulum.pivotY, 5, 0, Math.PI * 2);
-            ctx.fillStyle = rodColor;
-            ctx.fill();
+            noStroke();
+            fill(rodColor);
+            circle(pendulum.pivotX, pendulum.pivotY, 10);
         }
-
-        // 振り子の状態を更新する関数
-        function updatePendulum() {
-            // 角加速度の計算 (シンプルな振り子の運動方程式)
-            pendulum.angularAcceleration = (-pendulum.gravity / pendulum.length) * Math.sin(pendulum.angle);
-
-            // 角速度の更新
-            pendulum.angularVelocity += pendulum.angularAcceleration;
-
-            // 減衰を適用
-            pendulum.angularVelocity *= pendulum.damping;
-
-            // 角度の更新
-            pendulum.angle += pendulum.angularVelocity;
-        }
-
-        // アニメーションループ
-        function animate() {
-            updatePendulum();
-            drawPendulum();
-            requestAnimationFrame(animate); // 次のフレームを要求
-        }
-
-        // イベントリスナー
-        window.addEventListener('load', () => {
-            resizeCanvas(); // ページ読み込み時にキャンバスのサイズを設定
-            animate(); // アニメーションを開始
-        });
-
-        window.addEventListener('resize', resizeCanvas); // ウィンドウのリサイズ時にキャンバスのサイズを再設定
-
-        resetButton.addEventListener('click', resetPendulum); // リセットボタンのクリックイベント
-
-        // デバイスのテーマ変更を監視し、必要に応じて再描画
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-            // テーマが変更された場合、即座に再描画して色を更新
-            drawPendulum();
-        });
-
     </script>
 </body>
 </html>
